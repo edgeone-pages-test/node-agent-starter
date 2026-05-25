@@ -255,6 +255,7 @@ export async function onRequest(context: any) {
           }
 
           logger.log(`[handler] round ${roundIdx + 1}, messages: ${messages.length}`);
+          logger.log(`[debug] payload.messages: ${JSON.stringify(messages, null, 2)}`);
 
           // Tracer: LLM request span
           const llmSpan = context.tracer?.startSpan?.(`llm.request.round_${roundIdx + 1}`, {
@@ -322,15 +323,19 @@ export async function onRequest(context: any) {
           // No tool calls -> done
           if (!toolCalls || toolCalls.length === 0) break;
 
+          logger.log(`[debug] toolCalls raw: ${JSON.stringify(toolCalls, null, 2)}`);
+
           // Append assistant message with tool_calls
           const assistantMsg: Record<string, any> = { role: 'assistant' };
-          if (roundContent) assistantMsg.content = roundContent;
+          assistantMsg.content = roundContent || '';
           assistantMsg.tool_calls = toolCalls.map(tc => ({
             id: tc.id,
             type: 'function',
             function: { name: tc.name, arguments: tc.arguments },
           }));
           messages.push(assistantMsg);
+
+          logger.log(`[debug] assistantMsg: ${JSON.stringify(assistantMsg, null, 2)}`);
 
           // Emit tool_called events
           for (const tc of toolCalls) {
@@ -360,11 +365,13 @@ export async function onRequest(context: any) {
 
             for (let i = 0; i < toolCalls.length; i++) {
               logger.log(`[tool] ${toolCalls[i].name}: ${results[i].slice(0, 200)}`);
-              messages.push({
+              const toolMsg = {
                 role: 'tool',
                 tool_call_id: toolCalls[i].id,
                 content: results[i],
-              });
+              };
+              logger.log(`[debug] toolMsg[${i}]: ${JSON.stringify(toolMsg)}`);
+              messages.push(toolMsg);
             }
           } finally {
             for (const ts of toolSpans) {
