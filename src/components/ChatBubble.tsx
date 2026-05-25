@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { Message } from '../types';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import styles from './ChatBubble.module.css';
 
 interface Props {
@@ -20,7 +21,7 @@ export default memo(function ChatBubble({ message }: Props) {
           message.content
         ) : (
           <div className={styles.markdown}>
-            <Markdown>{message.content}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
           </div>
         )}
         <span className={styles.time}>

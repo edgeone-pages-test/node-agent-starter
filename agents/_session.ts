@@ -30,18 +30,29 @@ export class ChatSession {
       return (messages || [])
         .filter((m: any) => m.role === 'user' || m.role === 'assistant')
         .map((m: any) => ({ role: m.role, content: m.content || '' }));
-    } catch {
+    } catch (e) {
+      console.error(`[session] Failed to get history for ${conversationId}:`, e);
       return [];
     }
   }
 
   /** Save a user message to the store. */
   async saveUserMessage(conversationId: string, content: string): Promise<string> {
-    return await this.store.appendMessage({ conversationId, role: 'user', content });
+    try {
+      return await this.store.appendMessage({ conversationId, role: 'user', content });
+    } catch (e) {
+      console.error('[session] Failed to save user message:', e);
+      return '';
+    }
   }
 
   /** Save an assistant message to the store. */
   async saveAssistantMessage(conversationId: string, content: string): Promise<string> {
-    return await this.store.appendMessage({ conversationId, role: 'assistant', content });
+    try {
+      return await this.store.appendMessage({ conversationId, role: 'assistant', content });
+    } catch (e) {
+      console.error('[session] Failed to save assistant message:', e);
+      return '';
+    }
   }
 }

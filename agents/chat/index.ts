@@ -89,10 +89,11 @@ async function* parseStreamWithTools(
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
+      let streamDone = false;
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        if (trimmed === 'data: [DONE]') break;
+        if (trimmed === 'data: [DONE]') { streamDone = true; break; }
         if (!trimmed.startsWith('data: ')) continue;
 
         const jsonStr = trimmed.slice(6);
@@ -137,6 +138,7 @@ async function* parseStreamWithTools(
           }
         }
       }
+      if (streamDone) break;
     }
   } finally {
     reader.releaseLock();
@@ -158,21 +160,22 @@ export async function onRequest(context: any) {
   logger.log(`[handler] conversation_id: ${cid}`);
 
   const body = context.request.body ?? {};
-  const message = body.message as string | undefined;
+  const rawMessage = body?.message;
 
   // Tracer: set request-level attributes
   context.tracer?.set_attributes?.({
     'agent.scenario': 'node_starter_chat',
     'chat.conversation_id': cid,
-    'chat.has_message': !!message,
+    'chat.has_message': !!rawMessage,
   });
 
-  if (!message) {
+  if (typeof rawMessage !== 'string' || rawMessage.trim().length === 0) {
     return new Response(
-      encoder.encode(sseFrame('error', { message: "'message' is required" }) + sseFrame('done', {})),
+      encoder.encode(sseFrame('error', { message: '消息不能为空' }) + sseFrame('done', {})),
       { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } },
     );
   }
+  const message = rawMessage.slice(0, 10000);
 
   // Get platform cancel signal
   const signal: AbortSignal | undefined = context.request.signal;
@@ -225,6 +228,14 @@ export async function onRequest(context: any) {
 
   const stream = new ReadableStream({
     async start(controller) {
+      if (!modelConfig.apiKey || !modelConfig.baseUrl) {
+        controller.enqueue(encoder.encode(
+          sseFrame('error', { message: 'AI Gateway not configured. Set AI_GATEWAY_API_KEY and AI_GATEWAY_BASE_URL.' }),
+        ));
+        controller.close();
+        return;
+      }
+
       try {
         for (let roundIdx = 0; roundIdx < MAX_TOOL_ROUNDS; roundIdx++) {
           if (signal?.aborted) {

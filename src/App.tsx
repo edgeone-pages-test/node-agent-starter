@@ -37,6 +37,7 @@ export default function App() {
   const botMsgIdRef = useRef<string>('');
   const abortCtrlRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string>(getOrCreateConversationId());
+  const lampTimers = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (_historyFetchInFlight) return;
@@ -68,6 +69,8 @@ export default function App() {
   }, []);
 
   const handleSend = useCallback(async (text: string) => {
+    if (loading) return;
+
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -93,18 +96,14 @@ export default function App() {
       },
 
       onToolCalled(toolName) {
-        setLamps(prev =>
-          prev.map(l =>
-            l.id === toolName
-              ? { ...l, active: true, animKey: l.animKey + 1 }
-              : l
-          )
-        );
-        setTimeout(() => {
-          setLamps(prev =>
-            prev.map(l => (l.id === toolName ? { ...l, active: false } : l))
-          );
+        const existing = lampTimers.current.get(toolName);
+        if (existing) clearTimeout(existing);
+        setLamps(prev => prev.map(l => l.id === toolName ? { ...l, active: true, animKey: l.animKey + 1 } : l));
+        const tid = window.setTimeout(() => {
+          setLamps(prev => prev.map(l => (l.id === toolName ? { ...l, active: false } : l)));
+          lampTimers.current.delete(toolName);
         }, 1000);
+        lampTimers.current.set(toolName, tid);
       },
 
       onDone: finishStream,
@@ -116,9 +115,14 @@ export default function App() {
     }, conversationIdRef.current);
 
     abortCtrlRef.current = ctrl;
-  }, [updateBotMessage, finishStream]);
+  }, [loading, updateBotMessage, finishStream]);
 
   const handleClearHistory = useCallback(() => {
+    if (abortCtrlRef.current) {
+      abortCtrlRef.current.abort();
+      abortCtrlRef.current = null;
+    }
+    setLoading(false);
     localStorage.removeItem(CONVERSATION_ID_STORAGE_KEY);
     const newId = crypto.randomUUID();
     localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, newId);

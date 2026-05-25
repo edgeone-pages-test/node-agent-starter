@@ -136,7 +136,7 @@ function dispatchSseChunk(part: string, cb: StreamCallbacks, markDone: () => voi
     if (line.startsWith('event: ')) {
       eventType = line.slice(7);
     } else if (line.startsWith('data: ')) {
-      data = line.slice(6);
+      data += (data ? '\n' : '') + line.slice(6);
     }
   }
 

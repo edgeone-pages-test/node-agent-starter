@@ -107,6 +107,7 @@ export class ToolRegistry {
   }
 
   register(name: string, schema: ToolSchema, handler: (args: Record<string, unknown>) => unknown): void {
+    if (this.handlers.has(name)) return;
     this.tools.push(schema);
     this.handlers.set(name, handler);
   }
