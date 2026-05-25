@@ -1,12 +1,12 @@
 /**
- * 后端接口（EdgeOne Pages Functions）
+ * Backend API (EdgeOne Pages Functions)
  *
- * 路由映射规则（文件 → 路由）：
- *   agents/chat/index.ts    → POST /chat          主聊天入口（SSE 流式）
- *   agents/chat/stop.ts     → POST /chat/stop     中断正在执行的 agent
- *   agents/history/index.ts → POST /history       获取历史消息
+ * Route mapping (file → route):
+ *   agents/chat/index.ts    → POST /chat          Main chat endpoint (SSE streaming)
+ *   agents/chat/stop.ts     → POST /chat/stop     Abort the active agent run
+ *   agents/history/index.ts → POST /history       Get conversation history
  *
- * 本文件集中定义所有路径 + 请求封装。
+ * This file defines all API paths and request wrappers.
  */
 
 import type { Message } from './types';
@@ -24,7 +24,7 @@ export interface StreamCallbacks {
   onError: (err: Error) => void;
 }
 
-/** 获取当前 conversation 的历史消息，用于刷新页面后恢复聊天窗口。 */
+/** Get conversation history for restoring the chat window after page refresh. */
 export async function fetchConversationHistory(conversationId: string): Promise<Message[]> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -37,7 +37,7 @@ export async function fetchConversationHistory(conversationId: string): Promise<
         body: JSON.stringify({}),
       });
 
-      // 409 = 同 conversation 有活跃请求（React StrictMode 双渲染导致），等一下重试
+      // 409 = Active request on same conversation (React StrictMode double-render), retry shortly
       if (res.status === 409) {
         await new Promise(r => setTimeout(r, 500));
         continue;
@@ -56,10 +56,10 @@ export async function fetchConversationHistory(conversationId: string): Promise<
 }
 
 /**
- * 通过 SSE 流式调用 POST /chat
- * 后端推送事件：text_delta / tool_called / done / error
+ * Stream POST /chat via SSE
+ * Backend pushes events: text_delta / tool_called / done / error
  *
- * 返回一个 AbortController，调用方可用它中断请求（或配合 /chat/stop 端点优雅中止）。
+ * Returns an AbortController the caller can use to abort the request (or pair with /chat/stop for graceful abort).
  */
 export function sendMessageStream(
   message: string,
@@ -127,7 +127,7 @@ export function sendMessageStream(
   return ctrl;
 }
 
-/** 解析一条 SSE 事件并分发给对应回调 */
+/** Parse a single SSE event and dispatch to the corresponding callback */
 function dispatchSseChunk(part: string, cb: StreamCallbacks, markDone: () => void): void {
   let eventType = '';
   let data = '';
@@ -165,11 +165,11 @@ function dispatchSseChunk(part: string, cb: StreamCallbacks, markDone: () => voi
 }
 
 /**
- * 请求后端中断当前正在执行的 agent
+ * Request the backend to abort the currently running agent
  *
- * 注意：stop 请求的 header 不能带和 chat 相同的 conversation_id，
- * 否则 runtime 会用 stop 的 cancel_event 覆盖 chat 的 cancel_event。
- * 目标 conversation_id 只通过 body 传递。
+ * Note: the stop request header must NOT carry the same conversation_id as chat,
+ * otherwise the runtime will overwrite chat's cancel_event with stop's cancel_event.
+ * The target conversation_id is passed only via the request body.
  */
 export async function stopAgent(conversationId?: string): Promise<boolean> {
   try {

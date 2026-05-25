@@ -81,7 +81,7 @@ export default function CodeViewer() {
 
           {/* Step 1: EdgeOne Store */}
           <L n={11}>
-            <I /><Cmt t="// 1. EdgeOne Store：读取历史 + 保存用户消息" />
+            <I /><Cmt t="// 1. EdgeOne Store: load history + save user message" />
           </L>
           <L n={12}>
             <I /><Kw t="const " /><Va t="session" /><Op t=" = " />
@@ -120,7 +120,7 @@ export default function CodeViewer() {
 
           {/* Step 2: Tools */}
           <L n={22}>
-            <I /><Cmt t="// 2. EdgeOne Tools：读取平台沙箱工具并转换成 function calling tools" />
+            <I /><Cmt t="// 2. EdgeOne Tools: extract platform sandbox tools as function calling tools" />
           </L>
           <L n={23}>
             <I /><Kw t="const " /><Va t="toolRegistry" /><Op t=" = " />
@@ -130,7 +130,7 @@ export default function CodeViewer() {
 
           {/* Step 3: Fetch LLM */}
           <L n={25}>
-            <I /><Cmt t="// 3. 调用 OpenAI-compatible LLM" />
+            <I /><Cmt t="// 3. Call OpenAI-compatible LLM" />
           </L>
           <L n={26}>
             <I /><Kw t="const " /><Va t="response" /><Op t=" = " /><Kw t="await " />
@@ -154,7 +154,7 @@ export default function CodeViewer() {
 
           {/* Step 4: Handle tool_calls */}
           <L n={32}>
-            <I /><Cmt t="// 4. 处理模型返回：文本 or 工具调用" />
+            <I /><Cmt t="// 4. Handle response: text or tool_calls" />
           </L>
           <L n={33}>
             <I /><Kw t="const " /><Va t="assistantMessage" /><Op t=" = " /><Kw t="await " />
@@ -170,7 +170,7 @@ export default function CodeViewer() {
             <Kw t=" of " /><Va t="assistantMessage" /><Op t="." /><Va t="tool_calls" /><Op t=") {" />
           </L>
           <L n={37}>
-            <I3 /><Cmt t="// 调用 EdgeOne 沙箱工具 (commands/files/browser/code_interpreter)" />
+            <I3 /><Cmt t="// Execute EdgeOne sandbox tool (commands/files/browser/code_interpreter)" />
           </L>
           <L n={38}>
             <I3 /><Kw t="const " /><Va t="toolResult" /><Op t=" = " /><Kw t="await " />
@@ -187,7 +187,7 @@ export default function CodeViewer() {
             <I2 /><Op t="}" />
           </L>
           <L n={41}>
-            <I2 /><Cmt t="// 继续把工具结果发回模型，直到得到最终回答" />
+            <I2 /><Cmt t="// Continue sending tool results back to the model until final answer" />
           </L>
           <L n={42}>
             <I /><Op t="}" />
@@ -196,7 +196,7 @@ export default function CodeViewer() {
 
           {/* Step 5: Save assistant message */}
           <L n={44}>
-            <I /><Cmt t="// 5. EdgeOne Store：保存助手回复，供 /history 恢复" />
+            <I /><Cmt t="// 5. EdgeOne Store: save assistant reply for /history restore" />
           </L>
           <L n={45}>
             <I /><Kw t="await " /><Va t="session" /><Op t="." /><Fn t="saveAssistantMessage" />

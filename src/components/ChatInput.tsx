@@ -9,10 +9,10 @@ interface Props {
 }
 
 const PRESETS = [
-  '用终端命令查看当前系统时间和操作系统信息',
-  '在沙箱里创建一个 hello.txt 文件，内容写"Hello EdgeOne!"，然后读取验证',
-  '用 Python 计算斐波那契数列前 20 项并输出',
-  '用浏览器抓取 https://edgeone.ai 的页面标题',
+  'Use terminal commands to check the current system time and OS info',
+  'Create a hello.txt file in the sandbox with content "Hello EdgeOne!", then read it back',
+  'Use Python to calculate and print the first 20 Fibonacci numbers',
+  'Use the browser to fetch the page title of https://edgeone.ai',
 ];
 
 export default function ChatInput({ onSend, onStop, onClear, disabled }: Props) {

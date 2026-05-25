@@ -8,10 +8,10 @@ import CodeViewer from './components/CodeViewer';
 import styles from './App.module.css';
 
 const INITIAL_LAMPS: ToolLampState[] = [
-  { id: 'commands',         label: '命令执行', icon: '💻', active: false, animKey: 0 },
-  { id: 'files',            label: '文件操作', icon: '📁', active: false, animKey: 0 },
-  { id: 'code_interpreter', label: '代码运行', icon: '⚡', active: false, animKey: 0 },
-  { id: 'browser',          label: '浏览器',   icon: '🌐', active: false, animKey: 0 },
+  { id: 'commands',         label: 'Commands',    icon: '💻', active: false, animKey: 0 },
+  { id: 'files',            label: 'Files',       icon: '📁', active: false, animKey: 0 },
+  { id: 'code_interpreter', label: 'Code Runner', icon: '⚡', active: false, animKey: 0 },
+  { id: 'browser',          label: 'Browser',     icon: '🌐', active: false, animKey: 0 },
 ];
 
 const CONVERSATION_ID_STORAGE_KEY = 'eo_conversation_id';
@@ -25,7 +25,7 @@ function getOrCreateConversationId(): string {
   return conversationId;
 }
 
-// ✅ 模块级去重标记 —— 脱离 React 生命周期，StrictMode 无法干扰
+// Module-level dedup flag — outside React lifecycle, unaffected by StrictMode
 let _historyFetchInFlight = false;
 
 export default function App() {
@@ -109,7 +109,7 @@ export default function App() {
       onDone: finishStream,
 
       onError() {
-        updateBotMessage(content => content || '请求失败，请检查后端服务是否启动。');
+        updateBotMessage(content => content || 'Request failed. Please check if the backend service is running.');
         finishStream();
       },
     }, conversationIdRef.current);
@@ -136,12 +136,12 @@ export default function App() {
       abortCtrlRef.current = null;
     }
 
-    updateBotMessage(content => content ? content + '\n\n *已停止生成*' : ' *已停止生成*');
+    updateBotMessage(content => content ? content + '\n\n *Generation stopped*' : ' *Generation stopped*');
     setLoading(false);
 
     stopAgent(conversationIdRef.current).then(ok => {
       if (!ok) {
-        updateBotMessage(content => content + '\n\n 后端中断请求失败，服务端可能仍在运行。');
+        updateBotMessage(content => content + '\n\n Backend abort request failed. The server may still be running.');
       }
     });
   }, [updateBotMessage]);

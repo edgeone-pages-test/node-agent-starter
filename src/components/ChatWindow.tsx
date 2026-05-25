@@ -30,7 +30,7 @@ export default function ChatWindow({ messages, loading }: Props) {
           <span className={styles.emptyIcon}>&#x2B21;</span>
           <p className={styles.emptyTitle}>Node.js Starter</p>
           <p className={styles.emptyHint}>
-            我是运行在 EdgeOne 环境中的 Agent，使用原生 fetch 实现流式对话和工具调用循环，支持 commands、files、code_interpreter、browser 四种沙箱工具。
+            I'm an Agent running on EdgeOne, using native fetch for streaming chat and tool calling loops. Supports commands, files, code_interpreter, and browser sandbox tools.
           </p>
           <p className={styles.emptyFeatures}>
             EdgeOne Store &middot; Session Memory &middot; Platform Tools
