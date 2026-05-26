@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Message } from '../types';
+import { useT } from '../i18n';
 import ChatBubble from './ChatBubble';
 import styles from './ChatWindow.module.css';
 
@@ -10,6 +11,7 @@ interface Props {
 
 export default function ChatWindow({ messages, loading }: Props) {
   const windowRef = useRef<HTMLDivElement>(null);
+  const { t } = useT();
 
   useEffect(() => {
     if (messages.length === 0 && !loading) return;
@@ -28,12 +30,12 @@ export default function ChatWindow({ messages, loading }: Props) {
       {messages.length === 0 && (
         <div className={styles.empty}>
           <span className={styles.emptyIcon}>&#x2B21;</span>
-          <p className={styles.emptyTitle}>Node.js Starter</p>
+          <p className={styles.emptyTitle}>{t("empty.title")}</p>
           <p className={styles.emptyHint}>
-            I'm an Agent running on EdgeOne, using native fetch for streaming chat and tool calling loops. Supports commands, files, code_interpreter, and browser sandbox tools.
+            {t("empty.hint")}
           </p>
           <p className={styles.emptyFeatures}>
-            EdgeOne Store &middot; Session Memory &middot; Platform Tools
+            {t("empty.features")}
           </p>
         </div>
       )}

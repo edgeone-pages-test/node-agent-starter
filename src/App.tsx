@@ -1,18 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Message, ToolLampState } from './types';
 import { fetchConversationHistory, sendMessageStream, stopAgent } from './api';
+import { I18nProvider, LangToggle, useT, MessageKeys } from './i18n';
 import ToolIndicators from './components/ToolIndicators';
 import ChatWindow from './components/ChatWindow';
 import ChatInput from './components/ChatInput';
 import CodeViewer from './components/CodeViewer';
 import styles from './App.module.css';
 
-const INITIAL_LAMPS: ToolLampState[] = [
-  { id: 'commands',         label: 'Commands',    icon: '💻', active: false, animKey: 0 },
-  { id: 'files',            label: 'Files',       icon: '📁', active: false, animKey: 0 },
-  { id: 'code_interpreter', label: 'Code Runner', icon: '⚡', active: false, animKey: 0 },
-  { id: 'browser',          label: 'Browser',     icon: '🌐', active: false, animKey: 0 },
-];
+const LAMP_IDS = ['commands', 'files', 'code_interpreter', 'browser'] as const;
+const LAMP_ICONS: Record<string, string> = { commands: '💻', files: '📁', code_interpreter: '⚡', browser: '🌐' };
+const LAMP_I18N_KEYS: Record<string, MessageKeys> = { commands: 'tool.commands', files: 'tool.files', code_interpreter: 'tool.codeRunner', browser: 'tool.browser' };
 
 const CONVERSATION_ID_STORAGE_KEY = 'eo_conversation_id';
 
@@ -28,9 +26,21 @@ function getOrCreateConversationId(): string {
 // Module-level dedup flag — outside React lifecycle, unaffected by StrictMode
 let _historyFetchInFlight = false;
 
-export default function App() {
+function AppInner() {
+  const { t } = useT();
+
+  const buildLamps = useCallback((): ToolLampState[] => {
+    return LAMP_IDS.map(id => ({
+      id,
+      label: t(LAMP_I18N_KEYS[id]),
+      icon: LAMP_ICONS[id],
+      active: false,
+      animKey: 0,
+    }));
+  }, [t]);
+
   const [messages, setMessages] = useState<Message[]>([]);
-  const [lamps, setLamps]       = useState<ToolLampState[]>(INITIAL_LAMPS);
+  const [lamps, setLamps]       = useState<ToolLampState[]>(buildLamps);
   const [loading, setLoading]   = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
 
@@ -38,6 +48,11 @@ export default function App() {
   const abortCtrlRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string>(getOrCreateConversationId());
   const lampTimers = useRef<Map<string, number>>(new Map());
+
+  // Update lamp labels when language changes
+  useEffect(() => {
+    setLamps(prev => prev.map(l => ({ ...l, label: t(LAMP_I18N_KEYS[l.id]) })));
+  }, [t]);
 
   useEffect(() => {
     if (_historyFetchInFlight) return;
@@ -109,13 +124,13 @@ export default function App() {
       onDone: finishStream,
 
       onError() {
-        updateBotMessage(content => content || 'Request failed. Please check if the backend service is running.');
+        updateBotMessage(content => content || t('status.error'));
         finishStream();
       },
     }, conversationIdRef.current);
 
     abortCtrlRef.current = ctrl;
-  }, [loading, updateBotMessage, finishStream]);
+  }, [loading, updateBotMessage, finishStream, t]);
 
   const handleClearHistory = useCallback(() => {
     if (abortCtrlRef.current) {
@@ -136,20 +151,22 @@ export default function App() {
       abortCtrlRef.current = null;
     }
 
-    updateBotMessage(content => content ? content + '\n\n *Generation stopped*' : ' *Generation stopped*');
+    updateBotMessage(content => content ? content + '\n\n' + t('status.stopped') : t('status.stopped'));
     setLoading(false);
 
     stopAgent(conversationIdRef.current).then(ok => {
       if (!ok) {
-        updateBotMessage(content => content + '\n\n Backend abort request failed. The server may still be running.');
+        updateBotMessage(content => content + '\n\n' + t('status.backendError'));
       }
     });
-  }, [updateBotMessage]);
+  }, [updateBotMessage, t]);
 
   return (
     <div className={styles.shell}>
       <div className={styles.blob1} />
       <div className={styles.blob2} />
+
+      <LangToggle />
 
       <div className={styles.stage}>
         <div className={styles.chatPanel}>
@@ -162,8 +179,8 @@ export default function App() {
             <div className={styles.headerLeft}>
               <span className={styles.logo}>&#x2B21;</span>
               <div>
-                <p className={styles.title}>Agent Chat</p>
-                <p className={styles.subtitle}>Node.js Starter -- EdgeOne Pages Functions + Platform Tools</p>
+                <p className={styles.title}>{t('app.title')}</p>
+                <p className={styles.subtitle}>{t('app.subtitle')}</p>
               </div>
             </div>
             <ToolIndicators lamps={lamps} />
@@ -178,5 +195,13 @@ export default function App() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <I18nProvider>
+      <AppInner />
+    </I18nProvider>
   );
 }

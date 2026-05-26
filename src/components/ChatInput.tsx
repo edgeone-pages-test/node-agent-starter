@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, KeyboardEvent } from 'react';
+import { useT, MessageKeys } from '../i18n';
 import styles from './ChatInput.module.css';
 
 interface Props {
@@ -8,16 +9,12 @@ interface Props {
   disabled: boolean;
 }
 
-const PRESETS = [
-  'Use terminal commands to check the current system time and OS info',
-  'Create a hello.txt file in the sandbox with content "Hello EdgeOne!", then read it back',
-  'Use Python to calculate and print the first 20 Fibonacci numbers',
-  'Use the browser to fetch the page title of https://edgeone.ai',
-];
+const PRESET_KEYS = ['preset.1', 'preset.2', 'preset.3', 'preset.4'] as const;
 
 export default function ChatInput({ onSend, onStop, onClear, disabled }: Props) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { t } = useT();
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim();
@@ -51,14 +48,14 @@ export default function ChatInput({ onSend, onStop, onClear, disabled }: Props) 
   return (
     <div className={styles.bar}>
       <div className={styles.presets}>
-        {PRESETS.map(text => (
+        {PRESET_KEYS.map(key => (
           <button
-            key={text}
+            key={key}
             className={styles.presetChip}
-            onClick={() => handlePreset(text)}
+            onClick={() => handlePreset(t(key as MessageKeys))}
             disabled={disabled}
           >
-            {text}
+            {t(key as MessageKeys)}
           </button>
         ))}
       </div>
@@ -67,7 +64,7 @@ export default function ChatInput({ onSend, onStop, onClear, disabled }: Props) 
         <textarea
           ref={textareaRef}
           className={styles.textarea}
-          placeholder="Send a message... Enter to send, Shift+Enter for newline"
+          placeholder={t('chat.placeholder')}
           value={value}
           onChange={e => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -113,7 +110,7 @@ export default function ChatInput({ onSend, onStop, onClear, disabled }: Props) 
           </button>
         )}
       </div>
-      <p className={styles.hint}>Raw fetch + tool loop &middot; EdgeOne Platform Tools</p>
+      <p className={styles.hint}>{t('chat.hint')}</p>
     </div>
   );
 }
