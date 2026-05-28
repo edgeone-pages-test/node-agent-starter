@@ -1,7 +1,7 @@
 const en = {
   // Header
-  "app.title": "Agent Chat",
-  "app.subtitle": "Node.js Starter -- EdgeOne Pages Functions + Platform Tools",
+  "app.title": "Node.js Starter",
+  "app.subtitle": "Node.js Starter -- EdgeOne Makers + Platform Tools",
 
   // Empty state
   "empty.title": "Node.js Starter",

@@ -1,6 +1,6 @@
 # Node.js Starter Agent
 
-A minimal Node.js/TypeScript LLM Agent template on EdgeOne Pages Functions. Demonstrates how to build a streaming chat Agent with raw `fetch` calls, EdgeOne sandbox tool calling, and session memory via `context.store`.
+A minimal Node.js/TypeScript LLM Agent template on EdgeOne Makers. Demonstrates how to build a streaming chat Agent with raw `fetch` calls, EdgeOne sandbox tool calling, and session memory via `context.store`.
 
 ## Features
 
@@ -15,7 +15,7 @@ A minimal Node.js/TypeScript LLM Agent template on EdgeOne Pages Functions. Demo
 
 ```text
 node-starter/
-├── agents/                        # Node/TS backend (EdgeOne Pages Functions)
+├── agents/                        # Node/TS backend (EdgeOne Makers)
 │   ├── chat/
 │   │   ├── index.ts              # POST /chat — main chat entry (SSE streaming)
 │   │   └── stop.ts              # POST /chat/stop — abort active run
@@ -96,5 +96,5 @@ event: done           data: {"stopped":false}
 npm install
 
 # Start EdgeOne local dev (frontend + backend)
-edgeone pages dev
+edgeone makers dev
 ```

@@ -1,5 +1,5 @@
 /**
- * Chat handler -- EdgeOne Pages Functions
+ * Chat handler -- EdgeOne Makers
  * ========================================
  *
  * File path agents/chat/index.ts maps to **POST /chat**

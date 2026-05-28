@@ -1,7 +1,7 @@
 const zh = {
   // Header
-  "app.title": "Agent 聊天",
-  "app.subtitle": "Node.js Starter -- EdgeOne Pages Functions + 平台工具",
+  "app.title": "Node.js Starter",
+  "app.subtitle": "Node.js Starter -- EdgeOne Makers + 平台工具",
 
   // Empty state
   "empty.title": "Node.js Starter",

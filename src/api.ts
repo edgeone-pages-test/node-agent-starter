@@ -1,5 +1,5 @@
 /**
- * Backend API (EdgeOne Pages Functions)
+ * Backend API (EdgeOne Makers)
  *
  * Route mapping (file → route):
  *   agents/chat/index.ts    → POST /chat          Main chat endpoint (SSE streaming)
