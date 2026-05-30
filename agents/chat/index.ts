@@ -181,10 +181,11 @@ async function* parseStreamWithTools(response: Response, signal?: AbortSignal): 
         if (!trimmed.startsWith('data: ')) continue;
 
         const chunk = parseSseJson(trimmed.slice(6));
+        if (chunk?.usage) usage = chunk.usage;
+
         const choice = chunk?.choices?.[0];
         if (!choice) continue;
 
-        if (chunk.usage) usage = chunk.usage;
         if (choice.finish_reason) finishReason = choice.finish_reason;
 
         const delta = choice.delta ?? {};
