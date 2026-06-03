@@ -5,7 +5,14 @@ dist/
 *.local
 uv.toml
 .DS_Store
+.codegraph
 
 # AI assistant local instructions
 CLAUDE.md
 plan
+
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+.tef_dist/*
+  
