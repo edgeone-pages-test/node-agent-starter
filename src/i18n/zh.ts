@@ -38,6 +38,30 @@ const zh = {
   "trace.clear": "清除",
   "trace.empty": "等待 SSE 事件...",
   "trace.emptyHint": "发送消息后，原始后端 SSE 数据会显示在这里。",
+
+  // ─── REPL UI ─────────────────────────────────────────────────────────
+  "repl.motd.title": "Node Starter",
+  "repl.motd.tools": "可用工具：commands  files  code_interpreter  browser",
+  "repl.motd.help": "输入问题并按回车提交。Ctrl+C 中止 · Ctrl+L 清屏 · Ctrl+T 切换 trace · Ctrl+/ 显示帮助。",
+  "repl.prompt.label": "user▸ ",
+  "repl.prompt.userLabel": "user▸ ",
+  "repl.prompt.agentLabel": "agent▸ ",
+  "repl.prompt.placeholder": "随便问点什么…",
+  "repl.status.idle": "空闲",
+  "repl.status.running": "运行中",
+  "repl.status.aborted": "^C  已中止（前端）",
+  "repl.status.stopOk": "后端已确认 stop",
+  "repl.status.stopFail": "后端 stop 失败",
+  "repl.status.cleared": "[已清屏 · 服务端历史保留]",
+  "repl.status.reset": "[会话已重置 · 新 conversation_id]",
+  "repl.status.restored": "已恢复",
+  "repl.status.restoring": "… 正在恢复会话 {id}（{n} 条消息）…",
+  "repl.status.restoringFallback": "… 正在恢复会话 …",
+  "repl.status.verboseOn": "[verbose：显示原始 SSE 事件]",
+  "repl.status.verboseOff": "[verbose：关闭]",
+  "repl.done.summary": "[完成 · {elapsed}s · {rounds} 轮工具调用]",
+  "repl.help.title": "命令与快捷键",
+  "repl.help.body": "Enter — 提交 · Shift+Enter — 换行 · ↑/↓ — 输入历史 · Ctrl+C — 中止/清空 · Ctrl+L — 清屏 · Ctrl+Shift+K — 重置会话 · Ctrl+T — 切换 trace · Ctrl+/ — 此帮助",
 } as const;
 
 export default zh;

@@ -1,0 +1,158 @@
+.stream {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 6px;
+}
+
+/* Terminal text-glow shared by all line variants */
+.line {
+  font-family: var(--term-font);
+  font-size: var(--term-fs);
+  line-height: var(--term-line-h);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--term-fg);
+  padding: 1px 0;
+}
+
+/* ── motd ───────────────────────────────────────────────────── */
+.motd {
+  margin-bottom: 6px;
+  padding: 6px 0 10px;
+  border-bottom: 1px dashed var(--term-rule);
+  color: var(--term-dim);
+  font-size: 13px;
+}
+.motdTitle {
+  color: var(--term-amber);
+  font-weight: 600;
+  text-shadow: 0 0 var(--term-glow-md) var(--term-shadow);
+  display: block;
+  margin-bottom: 4px;
+}
+.motdHint {
+  display: block;
+  opacity: 0.85;
+}
+.motdHelp {
+  display: block;
+  margin-top: 4px;
+  opacity: 0.6;
+}
+
+/* ── user prompt echo ───────────────────────────────────────── */
+.user {
+  color: var(--term-amber);
+  font-weight: 500;
+  text-shadow: 0 0 var(--term-glow-sm) var(--term-shadow);
+  margin-top: 8px;
+}
+.userPrompt {
+  color: var(--term-amber);
+  margin-right: 4px;
+  user-select: none;
+}
+
+/* ── assistant text ─────────────────────────────────────────── */
+.text {
+  color: var(--term-fg);
+}
+.agentPrompt {
+  color: var(--term-green);
+  margin-right: 4px;
+  user-select: none;
+  text-shadow: 0 0 var(--term-glow-sm) rgba(135, 217, 108, 0.25);
+}
+
+/* ── tool call line ─────────────────────────────────────────── */
+.tool {
+  color: var(--term-dim);
+  font-size: 13px;
+}
+.toolTs {
+  color: var(--term-dim);
+  margin-right: 8px;
+}
+.toolDollar {
+  color: var(--term-cyan);
+  margin-right: 6px;
+  font-weight: 600;
+}
+.toolName {
+  color: var(--term-amber-2);
+  font-weight: 600;
+}
+.toolArgs {
+  color: var(--term-fg);
+  opacity: 0.8;
+  margin-left: 6px;
+}
+.toolMeta {
+  color: var(--term-dim);
+  margin-left: 6px;
+  opacity: 0.7;
+}
+
+/* ── done summary ────────────────────────────────────────────── */
+.done {
+  color: var(--term-green);
+  opacity: 0.7;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+/* ── error / sysHint / restored ─────────────────────────────── */
+.error {
+  color: var(--term-red);
+  text-shadow: 0 0 var(--term-glow-sm) rgba(255, 110, 110, 0.25);
+}
+.errorPrefix {
+  color: var(--term-red);
+  font-weight: 600;
+  margin-right: 6px;
+}
+.sysHint {
+  color: var(--term-dim);
+  font-size: 12px;
+  opacity: 0.85;
+}
+.sysHint--warn {
+  color: var(--term-amber-2);
+}
+.sysHint--error {
+  color: var(--term-red);
+}
+.restored {
+  color: var(--term-dim);
+  font-size: 12px;
+  opacity: 0.75;
+  font-style: italic;
+}
+
+/* ── verbose / raw event line ────────────────────────────────── */
+.raw {
+  color: var(--term-dim);
+  font-size: 12px;
+  border-left: 2px solid var(--term-rule);
+  padding-left: 8px;
+  margin-left: 4px;
+}
+.rawType {
+  color: var(--term-violet);
+  font-weight: 600;
+  margin-right: 6px;
+}
+.rawTs {
+  color: var(--term-dim);
+  margin-right: 6px;
+}
+.rawData {
+  display: block;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--term-fg);
+  opacity: 0.75;
+  margin-top: 2px;
+}

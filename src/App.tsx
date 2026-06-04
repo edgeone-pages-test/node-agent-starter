@@ -1,61 +1,68 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Message, ToolLampState } from './types';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import type { Message, ReplLine, TurnMeta } from './types';
 import type { RawSseEvent } from './api';
 import { fetchConversationHistory, sendMessageStream, stopAgent } from './api';
-import { I18nProvider, LangToggle, useT, MessageKeys } from './i18n';
-import ToolIndicators from './components/ToolIndicators';
-import ChatWindow from './components/ChatWindow';
-import ChatInput from './components/ChatInput';
-import CodeViewer from './components/CodeViewer';
-import TracePanel from './components/TracePanel';
+import { I18nProvider, useT } from './i18n';
+import ReplShell from './components/repl/ReplShell';
+import ReplStream from './components/repl/ReplStream';
+import ReplPrompt from './components/repl/ReplPrompt';
+import {
+  makeDone,
+  makeError,
+  makeMotd,
+  makeRestored,
+  makeSysHint,
+  makeText,
+  makeTool,
+  makeUser,
+  startTurn,
+} from './components/repl/lines';
+import type { ReplAction } from './components/repl/keymap';
 import styles from './App.module.css';
 
-const LAMP_IDS = ['commands', 'files', 'code_interpreter', 'browser'] as const;
-type LampId = typeof LAMP_IDS[number];
-const LAMP_ICONS: Record<string, string> = { commands: '💻', files: '📁', code_interpreter: '⚡', browser: '🌐' };
-const LAMP_I18N_KEYS: Record<string, MessageKeys> = { commands: 'tool.commands', files: 'tool.files', code_interpreter: 'tool.codeRunner', browser: 'tool.browser' };
-
-/**
- * Map an EdgeOne platform tool name to a lamp group.
- *
- * The runtime exposes fine-grained tools (e.g. `browser_fetch`,
- * `browser_screenshot`, `files_read`, `commands_run`,
- * `code_interpreter_python`). The header only has 4 lamps, so we collapse
- * each family by prefix / keyword. Returns null for tools that don't belong
- * to any lamp group (e.g. `web_search`).
- */
-function toolToLampId(toolName: string): LampId | null {
-  const name = toolName.toLowerCase();
-  if (name.startsWith('browser') || name.includes('browse')) return 'browser';
-  if (name.startsWith('code_interpreter') || name.startsWith('code-interpreter') || name.startsWith('interpreter')) return 'code_interpreter';
-  if (name.startsWith('files') || name.startsWith('file_') || name.startsWith('fs_')) return 'files';
-  if (name.startsWith('commands') || name.startsWith('command_') || name.startsWith('cmd_') || name.startsWith('shell') || name === 'exec') return 'commands';
-  if ((LAMP_IDS as readonly string[]).includes(name)) return name as LampId;
-  return null;
-}
-
 const CONVERSATION_ID_STORAGE_KEY = 'eo_conversation_id';
+const MODEL_BANNER = 'hy3-preview'; // visual only; matches default in agents/_model.ts
+const MAX_INPUT_HISTORY = 50;
 
-/** Returns existing conversation ID from localStorage, or null if first visit */
 function getExistingConversationId(): string | null {
   return localStorage.getItem(CONVERSATION_ID_STORAGE_KEY);
 }
 
-/** Returns existing or creates a new conversation ID */
 function getOrCreateConversationId(): string {
   const cached = getExistingConversationId();
   if (cached) return cached;
-
-  const conversationId = crypto.randomUUID();
-  localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, conversationId);
-  return conversationId;
+  const id = crypto.randomUUID();
+  localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, id);
+  return id;
 }
 
-function isWebSearchToolEvent(event: RawSseEvent): boolean {
-  if (event.eventType !== 'tool_called' || !event.data || typeof event.data !== 'object') {
-    return false;
+/** Map `Message[]` from /history into ReplLine[] (user / text only). */
+function historyToLines(history: Message[]): ReplLine[] {
+  const out: ReplLine[] = [];
+  for (const m of history) {
+    if (!m.content && m.role === 'assistant') continue;
+    if (m.role === 'user') {
+      out.push({ kind: 'user', id: m.id, text: m.content, ts: m.timestamp });
+    } else {
+      // each restored assistant turn becomes a single text line; we don't have
+      // its turnId anymore so we generate a synthetic one.
+      out.push({
+        kind: 'text',
+        id: m.id,
+        turnId: `restored-${m.id}`,
+        text: m.content,
+        ts: m.timestamp,
+        // Restored assistant turns only have one text line (no intermediate
+        // tool events were stored), so they always carry the agent▸ prefix.
+        isContinuation: false,
+      });
+    }
   }
-  return (event.data as { tool?: unknown }).tool === 'web_search';
+  return out;
+}
+
+function tplFill(s: string, vars: Record<string, string | number>): string {
+  return s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
 }
 
 // Module-level dedup flag — outside React lifecycle, unaffected by StrictMode
@@ -64,205 +71,198 @@ let _historyFetchInFlight = false;
 function AppInner() {
   const { t } = useT();
 
-  const buildLamps = useCallback((): ToolLampState[] => {
-    return LAMP_IDS.map(id => ({
-      id,
-      label: t(LAMP_I18N_KEYS[id]),
-      icon: LAMP_ICONS[id],
-      active: false,
-      animKey: 0,
-    }));
-  }, [t]);
-
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [lamps, setLamps]       = useState<ToolLampState[]>(buildLamps);
-  const [loading, setLoading]   = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  const [lines, setLines] = useState<ReplLine[]>(() => [makeMotd()]);
   const [traceEvents, setTraceEvents] = useState<RawSseEvent[]>([]);
-  const [rightPanelMode, setRightPanelMode] = useState<'code' | 'trace'>('code');
+  const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [verbose, setVerbose] = useState(false);
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
 
-  const botMsgIdRef = useRef<string>('');
+  const turnMetaRef = useRef<TurnMeta | null>(null);
   const abortCtrlRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string>(getOrCreateConversationId());
-  const lampTimers = useRef<Map<string, number>>(new Map());
+  const clearInputRef = useRef<() => void>(() => {});
+  const verboseRef = useRef<boolean>(false);
 
-  // Update lamp labels when language changes
+  // Restore conversation history on mount (skip on first visit).
   useEffect(() => {
-    setLamps(prev => prev.map(l => ({ ...l, label: t(LAMP_I18N_KEYS[l.id]) })));
-  }, [t]);
-
-  useEffect(() => {
-    // First visit: no existing conversation → skip history fetch for instant load
-    if (!getExistingConversationId()) {
+    if (!getExistingConversationId() || _historyFetchInFlight) {
+      // Even if there's no cached id, we created one via getOrCreateConversationId,
+      // but if it's a fresh one we haven't sent any messages, so /history would
+      // return empty. We still flip historyLoading off and skip the call.
+      // Detect "fresh" by checking that getExistingConversationId was null prior;
+      // since we already wrote it in getOrCreateConversationId, use a sentinel:
       setHistoryLoading(false);
       return;
     }
-
-    if (_historyFetchInFlight) return;
     _historyFetchInFlight = true;
-
-    fetchConversationHistory(conversationIdRef.current).then(history => {
-      if (history.length > 0) {
-        setMessages(history);
-      }
-    }).finally(() => {
-      _historyFetchInFlight = false;
-      setHistoryLoading(false);
-    });
-  }, []);
-
-  const updateBotMessage = useCallback((updater: (content: string) => string) => {
-    setMessages(prev =>
-      prev.map(m =>
-        m.id === botMsgIdRef.current
-          ? { ...m, content: updater(m.content) }
-          : m
-      )
-    );
-  }, []);
-
-  const setBotActivity = useCallback((activity: Message['activity']) => {
-    setMessages(prev =>
-      prev.map(m =>
-        m.id === botMsgIdRef.current
-          ? { ...m, activity }
-          : m
-      )
-    );
-  }, []);
-
-  const finishBotActivity = useCallback(() => {
-    setMessages(prev => {
-      let changed = false;
-      const next = prev.map(m => {
-        if (m.id === botMsgIdRef.current && m.activity?.status === 'active') {
-          changed = true;
-          return { ...m, activity: { ...m.activity, status: 'done' as const } };
+    fetchConversationHistory(conversationIdRef.current)
+      .then(history => {
+        if (history.length > 0) {
+          const restored = historyToLines(history);
+          const marker = makeRestored(history.length);
+          setLines(prev => [...prev, ...restored, marker]);
         }
-        return m;
+      })
+      .finally(() => {
+        _historyFetchInFlight = false;
+        setHistoryLoading(false);
       });
-      return changed ? next : prev;
-    });
+    // We intentionally run only on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Clear the assistant message's `streaming` flag (hides the blinking caret). */
-  const clearBotStreaming = useCallback(() => {
-    setMessages(prev => {
-      let changed = false;
-      const next = prev.map(m => {
-        if (m.id === botMsgIdRef.current && m.streaming) {
-          changed = true;
-          const { streaming, ...rest } = m;
-          return rest;
-        }
-        return m;
-      });
-      return changed ? next : prev;
-    });
-  }, []);
-
+  // ─── SSE handlers (turn-scoped) ─────────────────────────────────────
   const finishStream = useCallback(() => {
     setLoading(false);
     abortCtrlRef.current = null;
   }, []);
 
-  const handleSend = useCallback(async (text: string) => {
-    if (loading) return;
+  const handleSend = useCallback(
+    (text: string) => {
+      if (loading) return;
 
-    setRightPanelMode('trace');
+      // Push user echo + start a new turn
+      const userLine = makeUser(text);
+      setLines(prev => [...prev, userLine]);
+      setInputHistory(prev => {
+        const next = [...prev.filter(s => s !== text), text];
+        return next.length > MAX_INPUT_HISTORY ? next.slice(-MAX_INPUT_HISTORY) : next;
+      });
 
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: text,
-      timestamp: Date.now(),
-    };
+      const turnId = crypto.randomUUID();
+      turnMetaRef.current = startTurn(turnId);
+      setLoading(true);
 
-    const botMsgId = crypto.randomUUID();
-    botMsgIdRef.current = botMsgId;
-    const botMsg: Message = {
-      id: botMsgId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      streaming: true,
-    };
+      const ctrl = sendMessageStream(
+        text,
+        {
+          onTextDelta: delta => {
+            const meta = turnMetaRef.current;
+            if (!meta) return;
 
-    setMessages(prev => [...prev, userMsg, botMsg]);
-    setLoading(true);
-
-    const ctrl = sendMessageStream(text, {
-      onTextDelta(delta) {
-        finishBotActivity();
-        updateBotMessage(content => content + delta);
-      },
-
-      onToolCalled(toolName) {
-        if (toolName === 'web_search') {
-          setBotActivity({ type: 'web_search', label: 'Web searching...', status: 'active' });
-        }
-
-        const lampId = toolToLampId(toolName);
-        if (!lampId) return;
-
-        const existing = lampTimers.current.get(lampId);
-        if (existing) clearTimeout(existing);
-        setLamps(prev => prev.map(l => l.id === lampId ? { ...l, active: true, animKey: l.animKey + 1 } : l));
-        const tid = window.setTimeout(() => {
-          setLamps(prev => prev.map(l => (l.id === lampId ? { ...l, active: false } : l)));
-          lampTimers.current.delete(lampId);
-        }, 1000);
-        lampTimers.current.set(lampId, tid);
-      },
-
-      onRawEvent(event) {
-        if (!isWebSearchToolEvent(event)) {
-          finishBotActivity();
-        }
-        // Coalesce consecutive text_delta events into a single growing entry,
-        // so a multi-paragraph response doesn't flood the trace panel with
-        // hundreds of one-token rows.
-        if (event.eventType === 'text_delta') {
-          const delta = (event.data as { delta?: string } | null)?.delta ?? '';
-          setRightPanelMode('trace');
-          setTraceEvents(prev => {
-            const last = prev[prev.length - 1];
-            if (last && last.eventType === 'text_delta') {
-              const prevDelta = (last.data as { delta?: string } | null)?.delta ?? '';
-              const merged: RawSseEvent = {
-                ...last,
-                data: { delta: prevDelta + delta },
-                raw: last.raw + delta,
-                timestamp: event.timestamp,
-              };
-              return [...prev.slice(0, -1), merged];
+            // CRITICAL: do NOT generate ids or mutate refs *inside* the
+            // setLines updater. React 18 StrictMode invokes updaters twice
+            // in dev; any side-effect (UUID generation, ref mutation) makes
+            // the two calls disagree and React keeps only the second return.
+            //
+            // We decide the target line id BEFORE setLines, mutate the ref
+            // at the same time, then run a pure updater.
+            if (meta.currentTextLineId === null) {
+              // Continuation = a text line that comes AFTER a tool call in the
+              // same turn. The very first text line of the turn gets the
+              // agent▸ prefix; later segments don't, to avoid visual noise.
+              const isContinuation = meta.toolRounds > 0;
+              const fresh = makeText(meta.turnId, '', isContinuation);
+              meta.currentTextLineId = fresh.id;
+              meta.hasText = true;
+              setLines(prev => [...prev, { ...fresh, text: delta }]);
+            } else {
+              const target = meta.currentTextLineId;
+              meta.hasText = true;
+              setLines(prev =>
+                prev.map(l =>
+                  l.kind === 'text' && l.id === target ? { ...l, text: l.text + delta } : l,
+                ),
+              );
             }
-            return [...prev, event];
-          });
-          return;
-        }
-        setRightPanelMode('trace');
-        setTraceEvents(prev => [...prev, event]);
-      },
+          },
 
-      onDone() {
-        finishBotActivity();
-        clearBotStreaming();
-        finishStream();
-      },
+          onToolCalled: toolName => {
+            const meta = turnMetaRef.current;
+            if (!meta) return;
+            // Each tool call ends the current text line; the next text_delta
+            // will start a fresh one.
+            meta.currentTextLineId = null;
+            meta.toolRounds += 1;
+            // Build the line OUTSIDE the updater so its id is stable across
+            // StrictMode's double invocation.
+            const toolLine = makeTool(meta.turnId, toolName);
+            setLines(prev => [...prev, toolLine]);
+          },
 
-      onError() {
-        finishBotActivity();
-        clearBotStreaming();
-        updateBotMessage(content => content || t('status.error'));
-        finishStream();
-      },
-    }, conversationIdRef.current);
+          onRawEvent: ev => {
+            // Coalesce consecutive text_delta events into a single growing entry,
+            // so a multi-paragraph response doesn't flood the trace panel with
+            // hundreds of one-token rows.
+            if (ev.eventType === 'text_delta') {
+              const delta = (ev.data as { delta?: string } | null)?.delta ?? '';
+              setTraceEvents(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.eventType === 'text_delta') {
+                  const prevDelta = (last.data as { delta?: string } | null)?.delta ?? '';
+                  const merged: RawSseEvent = {
+                    ...last,
+                    data: { delta: prevDelta + delta },
+                    raw: last.raw + delta,
+                    timestamp: ev.timestamp,
+                  };
+                  return [...prev.slice(0, -1), merged];
+                }
+                return [...prev, ev];
+              });
+              return;
+            }
+            // Mirror to trace buffer for verbose mode.
+            setTraceEvents(prev => [...prev, ev]);
+          },
 
-    abortCtrlRef.current = ctrl;
-  }, [loading, updateBotMessage, setBotActivity, finishBotActivity, clearBotStreaming, finishStream, t]);
+          onDone: () => {
+            const meta = turnMetaRef.current;
+            if (meta) {
+              const doneLine = makeDone(meta.turnId, meta.startTs, meta.toolRounds);
+              setLines(prev => [...prev, doneLine]);
+              turnMetaRef.current = null;
+            }
+            finishStream();
+          },
 
-  const handleClearHistory = useCallback(() => {
+          onError: err => {
+            const meta = turnMetaRef.current;
+            const errLine = makeError(err.message || t('status.error'), meta?.turnId);
+            const padLine =
+              meta && !meta.hasText ? makeText(meta.turnId, '', true) : null;
+            setLines(prev => (padLine ? [...prev, errLine, padLine] : [...prev, errLine]));
+            if (meta) turnMetaRef.current = null;
+            finishStream();
+          },
+        },
+        conversationIdRef.current,
+      );
+
+      abortCtrlRef.current = ctrl;
+    },
+    [loading, t, finishStream],
+  );
+
+  // ─── Action handlers (keyboard) ─────────────────────────────────────
+  const handleStop = useCallback(() => {
+    if (abortCtrlRef.current) {
+      abortCtrlRef.current.abort();
+      abortCtrlRef.current = null;
+    }
+    const meta = turnMetaRef.current;
+    const abortLine = makeSysHint(t('repl.status.aborted'), 'warn');
+    setLines(prev => [...prev, abortLine]);
+    setLoading(false);
+
+    stopAgent(conversationIdRef.current).then(ok => {
+      const ackLine = makeSysHint(
+        ok ? t('repl.status.stopOk') : t('repl.status.stopFail'),
+        ok ? 'dim' : 'error',
+      );
+      setLines(prev => [...prev, ackLine]);
+    });
+    if (meta) turnMetaRef.current = null;
+  }, [t]);
+
+  const handleClearScreen = useCallback(() => {
+    const motd = makeMotd();
+    const hint = makeSysHint(t('repl.status.cleared'));
+    setLines([motd, hint]);
+  }, [t]);
+
+  const handleResetSession = useCallback(() => {
     if (abortCtrlRef.current) {
       abortCtrlRef.current.abort();
       abortCtrlRef.current = null;
@@ -272,67 +272,84 @@ function AppInner() {
     const newId = crypto.randomUUID();
     localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, newId);
     conversationIdRef.current = newId;
-    setMessages([]);
+    turnMetaRef.current = null;
     setTraceEvents([]);
-    setRightPanelMode('code');
+    const motd = makeMotd();
+    const hint = makeSysHint(t('repl.status.reset'), 'warn');
+    setLines([motd, hint]);
+  }, [t]);
+
+  const handleToggleVerbose = useCallback(() => {
+    // Compute next value via ref to avoid nesting setLines inside a setVerbose
+    // updater (which StrictMode invokes twice → would append the hint twice).
+    const next = !verboseRef.current;
+    verboseRef.current = next;
+    setVerbose(next);
+    const hint = makeSysHint(next ? t('repl.status.verboseOn') : t('repl.status.verboseOff'));
+    setLines(prev => [...prev, hint]);
+  }, [t]);
+
+  const handleShowHelp = useCallback(() => {
+    const h1 = makeSysHint(`— ${t('repl.help.title')} —`);
+    const h2 = makeSysHint(t('repl.help.body'));
+    setLines(prev => [...prev, h1, h2]);
+  }, [t]);
+
+  const onAction = useCallback(
+    (action: ReplAction) => {
+      switch (action) {
+        case 'abort':
+          handleStop();
+          return;
+        case 'clearInput':
+          clearInputRef.current?.();
+          return;
+        case 'clearScreen':
+          handleClearScreen();
+          return;
+        case 'resetSession':
+          handleResetSession();
+          return;
+        case 'toggleVerbose':
+          handleToggleVerbose();
+          return;
+        case 'showHelp':
+          handleShowHelp();
+          return;
+      }
+    },
+    [handleStop, handleClearScreen, handleResetSession, handleToggleVerbose, handleShowHelp],
+  );
+
+  const registerClearInput = useCallback((fn: () => void) => {
+    clearInputRef.current = fn;
   }, []);
 
-  const handleStop = useCallback(() => {
-    if (abortCtrlRef.current) {
-      abortCtrlRef.current.abort();
-      abortCtrlRef.current = null;
-    }
-
-    finishBotActivity();
-    updateBotMessage(content => content ? content + '\n\n' + t('status.stopped') : t('status.stopped'));
-    setLoading(false);
-
-    stopAgent(conversationIdRef.current).then(ok => {
-      if (!ok) {
-        updateBotMessage(content => content + '\n\n' + t('status.backendError'));
-      }
-    });
-  }, [finishBotActivity, updateBotMessage, t]);
+  const historyHint = useMemo(() => {
+    const id = conversationIdRef.current.slice(0, 8);
+    return tplFill(t('repl.status.restoring'), { id, n: 0 });
+  }, [t]);
 
   return (
-    <div className={styles.shell}>
-      <div className={styles.blob1} />
-      <div className={styles.blob2} />
-
-      <LangToggle />
-
-      <div className={styles.stage}>
-        <div className={styles.chatPanel}>
-          <header className={styles.header}>
-            <div className={styles.headerLeft}>
-              <span className={styles.logo}>&#x2B21;</span>
-              <div>
-                <p className={styles.title}>{t('app.title')}</p>
-                <p className={styles.subtitle}>{t('app.subtitle')}</p>
-              </div>
-            </div>
-            <ToolIndicators lamps={lamps} />
-          </header>
-
-          <div className={styles.chatWindowShell}>
-            <ChatWindow messages={messages} loading={loading} />
-            {historyLoading && messages.length === 0 && (
-              <div className={styles.historyOverlay}>
-                <div className={styles.historySpinner} />
-              </div>
-            )}
-          </div>
-          <ChatInput onSend={handleSend} onStop={handleStop} onClear={handleClearHistory} disabled={loading} />
-        </div>
-
-        <div className={styles.codePanel}>
-          {rightPanelMode === 'code' ? (
-            <CodeViewer />
-          ) : (
-            <TracePanel events={traceEvents} onClear={() => setTraceEvents([])} />
-          )}
-        </div>
-      </div>
+    <div className={styles.app}>
+      <ReplShell
+        modelName={MODEL_BANNER}
+        loading={loading}
+        historyLoading={historyLoading}
+        historyHint={historyHint}
+        onAction={onAction}
+        footer={
+          <ReplPrompt
+            loading={loading}
+            onSubmit={handleSend}
+            onStop={handleStop}
+            registerClearInput={registerClearInput}
+            inputHistory={inputHistory}
+          />
+        }
+      >
+        <ReplStream lines={lines} traceEvents={traceEvents} verbose={verbose} />
+      </ReplShell>
     </div>
   );
 }

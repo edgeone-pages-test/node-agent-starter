@@ -38,6 +38,30 @@ const en = {
   "trace.clear": "Clear",
   "trace.empty": "Waiting for SSE events...",
   "trace.emptyHint": "After sending a message, raw backend SSE data will be displayed here.",
+
+  // ─── REPL UI ─────────────────────────────────────────────────────────
+  "repl.motd.title": "Node LLM Agent · EdgeOne Pages Functions",
+  "repl.motd.tools": "Tools available: commands  files  code_interpreter  browser",
+  "repl.motd.help": "Type a question and press Enter. Ctrl+C aborts. Ctrl+L clears. Ctrl+T toggles trace. Ctrl+/ shows help.",
+  "repl.prompt.label": "user▸ ",
+  "repl.prompt.userLabel": "user▸ ",
+  "repl.prompt.agentLabel": "agent▸ ",
+  "repl.prompt.placeholder": "ask anything…",
+  "repl.status.idle": "idle",
+  "repl.status.running": "running",
+  "repl.status.aborted": "^C  aborted (frontend)",
+  "repl.status.stopOk": "backend stop ack",
+  "repl.status.stopFail": "backend stop FAILED",
+  "repl.status.cleared": "[cleared · server history kept]",
+  "repl.status.reset": "[session reset · new conversation_id]",
+  "repl.status.restored": "restored",
+  "repl.status.restoring": "… restoring conversation {id} ({n} messages) …",
+  "repl.status.restoringFallback": "… restoring conversation …",
+  "repl.status.verboseOn": "[verbose: raw SSE events]",
+  "repl.status.verboseOff": "[verbose: off]",
+  "repl.done.summary": "[done · {elapsed}s · {rounds} tool rounds]",
+  "repl.help.title": "commands & shortcuts",
+  "repl.help.body": "Enter — submit · Shift+Enter — newline · ↑/↓ — input history · Ctrl+C — abort/clear · Ctrl+L — clear screen · Ctrl+Shift+K — reset session · Ctrl+T — toggle trace · Ctrl+/ — this help",
 } as const;
 
 export default en;
