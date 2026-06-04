@@ -58,13 +58,13 @@ export class ToolRegistry {
 export function buildTools(context: any, logger?: any): ToolRegistry {
   const registry = new ToolRegistry();
 
-  const runtimeTools = context?.tools;
+  const runtimeTools = context.tools;
   if (logger) {
     logger.log(`[tools] context.tools = ${runtimeTools}`);
     logger.log(`[tools] context.tools type = ${typeof runtimeTools}`);
   }
 
-  if (!runtimeTools || typeof runtimeTools.all !== 'function') {
+  if (typeof runtimeTools.all !== 'function') {
     if (logger) {
       logger.log(`[tools] no EdgeOne platform tools available`);
     }

@@ -40,8 +40,8 @@ function contentToText(content: unknown): string {
 export async function onRequest(context: any) {
   const cid: string = context.conversation_id ?? '';
 
-  const store = context.store ?? null;
-  if (!store || !cid) {
+  const { store } = context;
+  if (!cid) {
     return new Response(JSON.stringify({ messages: [] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=UTF-8' },

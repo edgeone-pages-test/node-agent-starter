@@ -127,7 +127,7 @@ function assistantToolMessage(content: string, toolCalls: ToolCallAcc[]): ChatMe
 }
 
 async function loadHistoryAndSaveUser(context: any, session: ChatSession, cid: string, message: string) {
-  const span: TraceSpan | undefined = context.tracer?.startSpan?.('session.load_and_save', {
+  const span: TraceSpan | undefined = context.tracer?.startSpan('session.load_and_save', {
     'session.conversation_id': cid,
   });
 
@@ -144,7 +144,7 @@ async function loadHistoryAndSaveUser(context: any, session: ChatSession, cid: s
 }
 
 function createToolRegistry(context: any): ToolRegistry {
-  const span: TraceSpan | undefined = context.tracer?.startSpan?.('tools.build');
+  const span: TraceSpan | undefined = context.tracer?.startSpan('tools.build');
 
   try {
     const registry = buildTools(context, logger);
@@ -250,7 +250,7 @@ async function streamModelRound(params: {
   onTextDelta: (delta: string) => void;
 }): Promise<{ content: string; toolCalls: ToolCallAcc[] | null; stopped: boolean; failed: boolean }> {
   const { context, url, model, apiKey, payload, round, signal, controller, onTextDelta } = params;
-  const span: TraceSpan | undefined = context.tracer?.startSpan?.(`llm.request.round_${round}`, {
+  const span: TraceSpan | undefined = context.tracer?.startSpan(`llm.request.round_${round}`, {
     'openinference.span.kind': 'LLM',
     'llm.model_name': model,
     'llm.provider': 'openai',
@@ -356,7 +356,7 @@ async function executeToolCalls(params: {
   controller: ReadableStreamDefaultController<Uint8Array>;
 }): Promise<string[]> {
   const { context, toolRegistry, toolCalls, controller } = params;
-  const spans = toolCalls.map(tc => context.tracer?.startSpan?.(`tool.${tc.name}`, {
+  const spans = toolCalls.map(tc => context.tracer?.startSpan(`tool.${tc.name}`, {
     'tool.name': tc.name,
     'tool.call_id': tc.id,
     'tool.arguments_length': tc.arguments.length,
@@ -406,7 +406,7 @@ export async function onRequest(context: any) {
   const rawMessage = context.request.body?.message;
 
   logger.log(`[handler] conversation_id: ${cid}`);
-  context.tracer?.setAttributes?.({
+  context.tracer?.setAttributes({
     'agent.scenario': 'node_starter_chat',
     'chat.conversation_id': cid,
     'chat.has_message': !!rawMessage,
@@ -427,7 +427,7 @@ export async function onRequest(context: any) {
     { role: 'user', content: message },
   ];
 
-  const modelConfig = getModelConfig(context.env ?? {});
+  const modelConfig = getModelConfig(context.env);
   const url = `${modelConfig.baseUrl.replace(/\/$/, '')}/chat/completions`;
   logger.log(`[handler] streaming from: ${url}, model: ${modelConfig.model}, tools: ${toolRegistry.hasTools()}`);
 
@@ -491,7 +491,7 @@ export async function onRequest(context: any) {
           logger.log('[stream] aborted by user');
         } else {
           logger.error('[stream] error:', error.message, error.stack);
-          context.tracer?.setAttributes?.({
+          context.tracer?.setAttributes({
             'error.type': error.name || 'Error',
             'error.message': error.message || String(e),
           });
@@ -504,7 +504,7 @@ export async function onRequest(context: any) {
         }
       } finally {
         if (assistantContent) {
-          const span: TraceSpan | undefined = context.tracer?.startSpan?.('session.save_assistant_message', {
+          const span: TraceSpan | undefined = context.tracer?.startSpan('session.save_assistant_message', {
             'session.conversation_id': cid,
             'session.content_length': assistantContent.length,
           });
