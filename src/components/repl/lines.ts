@@ -2,7 +2,7 @@
  * Pure helpers for building & mutating ReplLine[] state.
  * Kept dependency-free so they can be unit-tested in isolation.
  */
-import type { ReplLine, TurnMeta } from '../../types';
+import type { ImageAttachment, ReplLine, TurnMeta } from '../../types';
 const newId = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
@@ -22,6 +22,24 @@ export function makeText(turnId: string, initial = '', isContinuation = false): 
 
 export function makeTool(turnId: string, tool: string): ReplLine {
   return { kind: 'tool', id: newId(), turnId, tool, ts: Date.now() };
+}
+
+export function makeImage(
+  turnId: string,
+  image: ImageAttachment,
+  toolName?: string,
+  toolCallId?: string,
+  ts?: number,
+): ReplLine {
+  return {
+    kind: 'image',
+    id: newId(),
+    turnId,
+    ts: ts ?? Date.now(),
+    image,
+    toolName,
+    toolCallId,
+  };
 }
 
 export function makeDone(turnId: string, startTs: number, toolRounds: number): ReplLine {

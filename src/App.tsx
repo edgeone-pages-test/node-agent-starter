@@ -1,14 +1,16 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import type { Message, ReplLine, TurnMeta } from './types';
+import type { ImageAttachment, ImageSsePayload, Message, ReplLine, TurnMeta } from './types';
 import type { RawSseEvent } from './api';
 import { fetchConversationHistory, sendMessageStream, stopAgent } from './api';
 import { I18nProvider, useT } from './i18n';
 import ReplShell from './components/repl/ReplShell';
 import ReplStream from './components/repl/ReplStream';
 import ReplPrompt from './components/repl/ReplPrompt';
+import ImageLightbox from './components/ImageLightbox';
 import {
   makeDone,
   makeError,
+  makeImage,
   makeMotd,
   makeRestored,
   makeSysHint,
@@ -17,6 +19,16 @@ import {
   makeUser,
   startTurn,
 } from './components/repl/lines';
+import {
+  base64ToBlob,
+  createObjectUrl,
+  deleteConversationImages,
+  loadConversationImages,
+  makeStorageKey,
+  revokeAllObjectUrls,
+  saveImage,
+  type StoredImageRecord,
+} from './lib/imageStore';
 import type { ReplAction } from './components/repl/keymap';
 import styles from './App.module.css';
 
@@ -26,14 +38,6 @@ const MAX_INPUT_HISTORY = 50;
 
 function getExistingConversationId(): string | null {
   return localStorage.getItem(CONVERSATION_ID_STORAGE_KEY);
-}
-
-function getOrCreateConversationId(): string {
-  const cached = getExistingConversationId();
-  if (cached) return cached;
-  const id = crypto.randomUUID();
-  localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, id);
-  return id;
 }
 
 /** Map `Message[]` from /history into ReplLine[] (user / text only). */
@@ -61,6 +65,45 @@ function historyToLines(history: Message[]): ReplLine[] {
   return out;
 }
 
+/** Map IndexedDB image records into ReplLine.image variants. */
+function imagesToLines(records: StoredImageRecord[]): ReplLine[] {
+  return records.map(r => {
+    const url = createObjectUrl(r.storageKey, r.blob);
+    const attachment: ImageAttachment = {
+      imageId:    r.imageId,
+      storageKey: r.storageKey,
+      url,
+      mimeType:   r.mimeType,
+      size:       r.size,
+    };
+    return makeImage(`restored-${r.messageId}`, attachment, r.toolName, r.toolCallId, r.createdAt);
+  });
+}
+
+/** Stable merge of two ts-sorted line arrays. Keeps relative order within
+ *  each list when timestamps tie — text lines first (history), images after. */
+function mergeByTs(textLines: ReplLine[], imageLines: ReplLine[]): ReplLine[] {
+  const out: ReplLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < textLines.length && j < imageLines.length) {
+    const a = textLines[i];
+    const b = imageLines[j];
+    const ta = 'ts' in a ? a.ts : 0;
+    const tb = 'ts' in b ? b.ts : 0;
+    if (ta <= tb) {
+      out.push(a);
+      i++;
+    } else {
+      out.push(b);
+      j++;
+    }
+  }
+  while (i < textLines.length) out.push(textLines[i++]);
+  while (j < imageLines.length) out.push(imageLines[j++]);
+  return out;
+}
+
 function tplFill(s: string, vars: Record<string, string | number>): string {
   return s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
 }
@@ -77,32 +120,60 @@ function AppInner() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [verbose, setVerbose] = useState(false);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxAlt, setLightboxAlt] = useState<string>('');
+  // Set on send, cleared on first agent output / done / error / abort.
+  // The pending caret in <ReplStream> is shown iff this is non-null.
+  // Using a single piece of state instead of inserting+filtering a placeholder
+  // row across 5 SSE handlers — see PendingCaret.tsx for the rationale.
+  const [pendingTurnId, setPendingTurnId] = useState<string | null>(null);
 
   const turnMetaRef = useRef<TurnMeta | null>(null);
   const abortCtrlRef = useRef<AbortController | null>(null);
-  const conversationIdRef = useRef<string>(getOrCreateConversationId());
+  // Capture both the cid AND whether it was generated this mount, BEFORE
+  // any side effect can run. The history-load effect uses `wasFresh` to
+  // skip the network round-trip on first visit (a brand-new cid can't
+  // possibly have server history or stored images).
+  const cidInit = useRef<{ cid: string; wasFresh: boolean }>(
+    ((): { cid: string; wasFresh: boolean } => {
+      const existing = getExistingConversationId();
+      if (existing) return { cid: existing, wasFresh: false };
+      const id = crypto.randomUUID();
+      localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, id);
+      return { cid: id, wasFresh: true };
+    })(),
+  );
+  const conversationIdRef = useRef<string>(cidInit.current.cid);
   const clearInputRef = useRef<() => void>(() => {});
   const verboseRef = useRef<boolean>(false);
 
   // Restore conversation history on mount (skip on first visit).
   useEffect(() => {
-    if (!getExistingConversationId() || _historyFetchInFlight) {
-      // Even if there's no cached id, we created one via getOrCreateConversationId,
-      // but if it's a fresh one we haven't sent any messages, so /history would
-      // return empty. We still flip historyLoading off and skip the call.
-      // Detect "fresh" by checking that getExistingConversationId was null prior;
-      // since we already wrote it in getOrCreateConversationId, use a sentinel:
+    if (cidInit.current.wasFresh || _historyFetchInFlight) {
+      // Brand-new cid → no server messages, no IDB images. Skip the round-trip.
       setHistoryLoading(false);
       return;
     }
     _historyFetchInFlight = true;
-    fetchConversationHistory(conversationIdRef.current)
-      .then(history => {
-        if (history.length > 0) {
-          const restored = historyToLines(history);
-          const marker = makeRestored(history.length);
-          setLines(prev => [...prev, ...restored, marker]);
-        }
+    const cid = conversationIdRef.current;
+    // Fetch text history (server) and image blobs (IndexedDB) in parallel —
+    // they're independent stores, and the user shouldn't wait on one for the
+    // other. They get merged by timestamp before rendering.
+    Promise.all([
+      fetchConversationHistory(cid),
+      loadConversationImages(cid).catch(err => {
+        // Treat IDB failures as non-fatal — user gets text without images.
+        console.warn('[image-store] failed to load conversation images:', err);
+        return [] as StoredImageRecord[];
+      }),
+    ])
+      .then(([history, imageRecords]) => {
+        if (history.length === 0 && imageRecords.length === 0) return;
+        const textLines = historyToLines(history);
+        const imageLines = imagesToLines(imageRecords);
+        const merged = mergeByTs(textLines, imageLines);
+        const marker = makeRestored(history.length);
+        setLines(prev => [...prev, ...merged, marker]);
       })
       .finally(() => {
         _historyFetchInFlight = false;
@@ -112,26 +183,94 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Revoke all blob: URLs on unmount. We don't try to revoke URL-by-URL on
+  // line removal — clearScreen / resetSession replace the lines array as a
+  // whole, and the revokeAllObjectUrls() called there is the single source
+  // of truth. This effect just covers the page-close / route-leave path.
+  useEffect(() => {
+    return () => {
+      revokeAllObjectUrls();
+    };
+  }, []);
+
   // ─── SSE handlers (turn-scoped) ─────────────────────────────────────
   const finishStream = useCallback(() => {
     setLoading(false);
+    // Hide the pending caret on every terminal path (done/error/abort).
+    // Idempotent — safe to call when no turn was pending.
+    setPendingTurnId(null);
     abortCtrlRef.current = null;
+  }, []);
+
+  const handleImage = useCallback((payload: ImageSsePayload) => {
+    const cid = conversationIdRef.current;
+    const meta = turnMetaRef.current;
+    const turnId = meta?.turnId ?? 'orphan';
+
+    let blob: Blob;
+    try {
+      blob = base64ToBlob(payload.base64, payload.mimeType);
+    } catch (err) {
+      // Corrupt base64 → no image, but the stream continues. Surface a hint
+      // so the user knows something was dropped.
+      console.warn('[image] base64 decode failed:', err);
+      const hint = makeSysHint(`[image broken: ${payload.imageId.slice(0, 8)}]`, 'warn');
+      setLines(prev => [...prev, hint]);
+      return;
+    }
+
+    // CRITICAL: append the line SYNCHRONOUSLY, before any await. Multiple
+    // image events arriving back-to-back (a tool that returned 5 screenshots)
+    // each spawn an independent IDB readwrite transaction, and IndexedDB
+    // does NOT guarantee resolution order across distinct transactions on the
+    // same store. Appending after `await saveImage` would let images render
+    // out of arrival order. The blob URL is created from the in-memory blob,
+    // not from the IDB record, so we don't need persistence to land first.
+    const storageKey = makeStorageKey(cid, payload.imageId);
+    const url = createObjectUrl(storageKey, blob);
+    const attachment: ImageAttachment = {
+      imageId:    payload.imageId,
+      storageKey,
+      url,
+      mimeType:   payload.mimeType,
+      size:       payload.size || blob.size,
+    };
+    const imageLine = makeImage(turnId, attachment, payload.toolName, payload.toolCallId);
+    setLines(prev => [...prev, imageLine]);
+
+    // Fire-and-forget persist. Failure (quota, private mode, etc.) is not
+    // fatal — the image stays visible for the current session via the blob
+    // URL we just created.
+    void saveImage({
+      conversationId: cid,
+      messageId:      turnId,
+      imageId:        payload.imageId,
+      blob,
+      mimeType:       payload.mimeType,
+      toolName:       payload.toolName,
+      toolCallId:     payload.toolCallId,
+    }).catch(err => {
+      console.warn('[image] saveImage failed; rendering without persistence:', err);
+    });
   }, []);
 
   const handleSend = useCallback(
     (text: string) => {
       if (loading) return;
 
-      // Push user echo + start a new turn
-      const userLine = makeUser(text);
-      setLines(prev => [...prev, userLine]);
+      // Push user echo, kick the pending caret, then start a new turn.
+      // Pending visibility is driven by `pendingTurnId` state — cleared on
+      // first agent output (text_delta/tool_called/image), or on
+      // done/error/abort. See PendingCaret.tsx for rationale.
+      const turnId = crypto.randomUUID();
+      setLines(prev => [...prev, makeUser(text)]);
       setInputHistory(prev => {
         const next = [...prev.filter(s => s !== text), text];
         return next.length > MAX_INPUT_HISTORY ? next.slice(-MAX_INPUT_HISTORY) : next;
       });
 
-      const turnId = crypto.randomUUID();
       turnMetaRef.current = startTurn(turnId);
+      setPendingTurnId(turnId);
       setLoading(true);
 
       const ctrl = sendMessageStream(
@@ -156,6 +295,7 @@ function AppInner() {
               const fresh = makeText(meta.turnId, '', isContinuation);
               meta.currentTextLineId = fresh.id;
               meta.hasText = true;
+              setPendingTurnId(null);
               setLines(prev => [...prev, { ...fresh, text: delta }]);
             } else {
               const target = meta.currentTextLineId;
@@ -178,7 +318,12 @@ function AppInner() {
             // Build the line OUTSIDE the updater so its id is stable across
             // StrictMode's double invocation.
             const toolLine = makeTool(meta.turnId, toolName);
+            setPendingTurnId(null);
             setLines(prev => [...prev, toolLine]);
+          },
+
+          onImage: payload => {
+            handleImage(payload);
           },
 
           onRawEvent: ev => {
@@ -232,7 +377,7 @@ function AppInner() {
 
       abortCtrlRef.current = ctrl;
     },
-    [loading, t, finishStream],
+    [loading, t, finishStream, handleImage],
   );
 
   // ─── Action handlers (keyboard) ─────────────────────────────────────
@@ -245,6 +390,7 @@ function AppInner() {
     const abortLine = makeSysHint(t('repl.status.aborted'), 'warn');
     setLines(prev => [...prev, abortLine]);
     setLoading(false);
+    setPendingTurnId(null);
 
     stopAgent(conversationIdRef.current).then(ok => {
       const ackLine = makeSysHint(
@@ -257,6 +403,10 @@ function AppInner() {
   }, [t]);
 
   const handleClearScreen = useCallback(() => {
+    // Clearing the screen drops references to all currently-rendered image
+    // rows, so revoke their blob URLs to release memory. The IDB records are
+    // intentionally preserved — server history is preserved on /clear too.
+    revokeAllObjectUrls();
     const motd = makeMotd();
     const hint = makeSysHint(t('repl.status.cleared'));
     setLines([motd, hint]);
@@ -268,12 +418,19 @@ function AppInner() {
       abortCtrlRef.current = null;
     }
     setLoading(false);
+    const oldCid = conversationIdRef.current;
     localStorage.removeItem(CONVERSATION_ID_STORAGE_KEY);
     const newId = crypto.randomUUID();
     localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, newId);
     conversationIdRef.current = newId;
     turnMetaRef.current = null;
     setTraceEvents([]);
+    // Wipe any blob URLs first (synchronously) so we never render with a
+    // dangling URL, then drop the IDB records for the abandoned session.
+    revokeAllObjectUrls();
+    void deleteConversationImages(oldCid).catch(err => {
+      console.warn('[image-store] failed to delete old conversation images:', err);
+    });
     const motd = makeMotd();
     const hint = makeSysHint(t('repl.status.reset'), 'warn');
     setLines([motd, hint]);
@@ -294,6 +451,15 @@ function AppInner() {
     const h2 = makeSysHint(t('repl.help.body'));
     setLines(prev => [...prev, h1, h2]);
   }, [t]);
+
+  const handleOpenImage = useCallback((url: string, alt: string) => {
+    setLightboxUrl(url);
+    setLightboxAlt(alt);
+  }, []);
+
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxUrl(null);
+  }, []);
 
   const onAction = useCallback(
     (action: ReplAction) => {
@@ -348,8 +514,15 @@ function AppInner() {
           />
         }
       >
-        <ReplStream lines={lines} traceEvents={traceEvents} verbose={verbose} />
+        <ReplStream
+          lines={lines}
+          traceEvents={traceEvents}
+          verbose={verbose}
+          showPending={pendingTurnId !== null}
+          onOpenImage={handleOpenImage}
+        />
       </ReplShell>
+      <ImageLightbox url={lightboxUrl} alt={lightboxAlt} onClose={handleCloseLightbox} />
     </div>
   );
 }

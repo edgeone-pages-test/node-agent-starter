@@ -62,6 +62,12 @@ const en = {
   "repl.done.summary": "[done · {elapsed}s · {rounds} tool rounds]",
   "repl.help.title": "commands & shortcuts",
   "repl.help.body": "Enter — submit · Shift+Enter — newline · ↑/↓ — input history · Ctrl+C — abort/clear · Ctrl+L — clear screen · Ctrl+Shift+K — reset session · Ctrl+T — toggle trace · Ctrl+/ — this help",
+
+  // ─── Image (tool output) ─────────────────────────────────────────────
+  "repl.image.open": "Open image (Esc to close)",
+
+  // ─── Pending caret (between submit and first agent output) ───────────
+  "repl.status.thinking": "thinking…",
 } as const;
 
 export default en;

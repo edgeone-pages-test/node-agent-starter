@@ -27,9 +27,20 @@ export class ToolRegistry {
   }
 
   async execute(name: string, arguments_: string): Promise<string> {
+    const raw = await this.executeRaw(name, arguments_);
+    return stringifyResult(raw);
+  }
+
+  /**
+   * Like `execute`, but returns the raw handler value (or a structured error
+   * object) without stringification. The chat handler uses this to inspect
+   * the result for embedded base64 images BEFORE serialization, so they can
+   * be lifted out of the tool message and emitted as separate SSE events.
+   */
+  async executeRaw(name: string, arguments_: string): Promise<unknown> {
     const handler = this.handlers.get(name);
     if (!handler) {
-      return JSON.stringify({ error: `Unknown tool: ${name}` });
+      return { error: `Unknown tool: ${name}` };
     }
 
     let args: Record<string, unknown> = {};
@@ -44,10 +55,10 @@ export class ToolRegistry {
       if (result && typeof result === 'object' && 'then' in result) {
         result = await (result as Promise<unknown>);
       }
-      return stringifyResult(result);
+      return result;
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      return JSON.stringify({ error: `Tool execution failed: ${message}` });
+      return { error: `Tool execution failed: ${message}` };
     }
   }
 }
@@ -124,7 +135,7 @@ export function buildTools(context: any, logger?: any): ToolRegistry {
   return registry;
 }
 
-function stringifyResult(result: unknown): string {
+export function stringifyResult(result: unknown): string {
   if (typeof result === 'string') return result;
   try {
     return JSON.stringify(result);

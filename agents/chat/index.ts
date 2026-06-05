@@ -9,7 +9,8 @@
 import { getModelConfig } from '../_model';
 import { createLogger } from '../_logger';
 import { ChatSession } from '../_session';
-import { buildTools } from '../_tools';
+import { buildTools, stringifyResult } from '../_tools';
+import { extractImagesFromToolResult } from './_images';
 
 const logger = createLogger('chat');
 const encoder = new TextEncoder();
@@ -23,7 +24,8 @@ const SSE_HEADERS = {
 };
 
 const SYSTEM_PROMPT = [
-  'You are a helpful assistant running inside an EdgeOne sandbox environment.',
+  'You are an EdgeOne Makers Node.js starter example: an out-of-the-box Agent template that helps developers quickly run through and validate platform capabilities. This template shows how to call an OpenAI-compatible Chat Completions API directly with raw `fetch`, no agent SDK.',
+  'When introducing yourself, clearly say that you are a demo Agent built with raw Node.js (no SDK, just OpenAI-compatible fetch + function calling) on EdgeOne Makers, designed to showcase tool calling, streaming responses, and session memory for developers.',
   'The runtime exposes a set of platform tools via function calling — their exact',
   'names, descriptions, and parameter schemas are provided alongside this message.',
   'Read each tool\'s schema before calling it; do not assume names or parameters.',
@@ -365,12 +367,38 @@ async function executeToolCalls(params: {
   try {
     return await Promise.all(toolCalls.map(async (tc, index) => {
       const startedAt = Date.now();
-      const result = await toolRegistry.execute(tc.name, tc.arguments);
+
+      // Pull the raw handler value so we can sniff for base64 images BEFORE
+      // it gets serialized into the next-round `tool` message. Anything we
+      // find is replaced with a `[image:<id>]` placeholder; the redacted
+      // structure is what flows back into the model context.
+      const raw = await toolRegistry.executeRaw(tc.name, tc.arguments);
+      const { images, redactedResult, truncated } = extractImagesFromToolResult(raw);
+      const result = stringifyResult(redactedResult);
       const durationMs = Date.now() - startedAt;
       const resultPreview = safeJsonPreview(result, 2000);
       const isError = result.includes('"error"');
 
-      spans[index]?.setAttributes?.({ 'tool.result_length': result.length });
+      // SSE ordering contract: image events fire AFTER `tool_debug{phase:'call'}`
+      // (already emitted by emitToolCallEvents) and BEFORE
+      // `tool_debug{phase:'result'}`. The frontend uses this to attach images
+      // to the in-flight tool row.
+      for (const img of images) {
+        sendEvent(controller, 'image', {
+          imageId:    img.imageId,
+          base64:     img.base64,
+          mimeType:   img.mimeType,
+          size:       img.size,
+          toolName:   tc.name,
+          toolCallId: tc.id,
+        });
+      }
+
+      spans[index]?.setAttributes?.({
+        'tool.result_length': result.length,
+        'tool.images_extracted': images.length,
+        'tool.images_truncated': truncated,
+      });
       sendEvent(controller, 'tool_debug', {
         phase: 'result',
         tool: tc.name,
@@ -378,6 +406,8 @@ async function executeToolCalls(params: {
         resultPreview,
         resultLength: result.length,
         durationMs,
+        imageCount: images.length,
+        ...(truncated ? { imagesTruncated: true } : {}),
         ...(isError ? { error: resultPreview } : {}),
       });
 

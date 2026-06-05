@@ -26,11 +26,19 @@ function tplFill(s: string, vars: Record<string, string | number>): string {
   return s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
 }
 
-interface Props {
-  line: ReplLine;
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes < 0) return '–';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export default function ReplLineRow({ line }: Props) {
+interface Props {
+  line: ReplLine;
+  onOpenImage?: (url: string, alt: string) => void;
+}
+
+export default function ReplLineRow({ line, onOpenImage }: Props) {
   const { t } = useT();
 
   switch (line.kind) {
@@ -76,6 +84,34 @@ export default function ReplLineRow({ line }: Props) {
           )}
         </div>
       );
+
+    case 'image': {
+      const { image, toolName } = line;
+      const altText = `${toolName ?? 'tool'} output (${formatBytes(image.size)})`;
+      return (
+        <div className={`${styles.line} ${styles.image}`}>
+          <span className={styles.imageTs}>[{formatTime(line.ts)}]</span>
+          <span className={styles.imageGlyph} aria-hidden>📷</span>
+          {toolName && <span className={styles.imageTool}>{toolName}</span>}
+          <button
+            type="button"
+            className={styles.imageBtn}
+            onClick={() => onOpenImage?.(image.url, altText)}
+            aria-label={t('repl.image.open')}
+            title={t('repl.image.open')}
+          >
+            <img
+              src={image.url}
+              alt=""
+              className={styles.imageThumb}
+              loading="lazy"
+              draggable={false}
+            />
+          </button>
+          <span className={styles.imageMeta}>{formatBytes(image.size)}</span>
+        </div>
+      );
+    }
 
     case 'done':
       return (

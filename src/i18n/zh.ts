@@ -62,6 +62,12 @@ const zh = {
   "repl.done.summary": "[完成 · {elapsed}s · {rounds} 轮工具调用]",
   "repl.help.title": "命令与快捷键",
   "repl.help.body": "Enter — 提交 · Shift+Enter — 换行 · ↑/↓ — 输入历史 · Ctrl+C — 中止/清空 · Ctrl+L — 清屏 · Ctrl+Shift+K — 重置会话 · Ctrl+T — 切换 trace · Ctrl+/ — 此帮助",
+
+  // ─── Image (tool output) ─────────────────────────────────────────────
+  "repl.image.open": "打开图片（Esc 关闭）",
+
+  // ─── Pending caret (between submit and first agent output) ───────────
+  "repl.status.thinking": "思考中…",
 } as const;
 
 export default zh;

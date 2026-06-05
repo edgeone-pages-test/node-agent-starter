@@ -9,7 +9,7 @@
  * This file defines all API paths and request wrappers.
  */
 
-import type { Message } from './types';
+import type { Message, ImageSsePayload } from './types';
 
 export const API = {
   chat: '/chat',
@@ -27,6 +27,7 @@ export interface RawSseEvent {
 export interface StreamCallbacks {
   onTextDelta: (delta: string) => void;
   onToolCalled: (toolName: string) => void;
+  onImage: (payload: ImageSsePayload) => void;
   onDone: () => void;
   onError: (err: Error) => void;
   onRawEvent?: (event: RawSseEvent) => void;
@@ -65,7 +66,7 @@ export async function fetchConversationHistory(conversationId: string): Promise<
 
 /**
  * Stream POST /chat via SSE
- * Backend pushes events: text_delta / tool_called / done / error
+ * Backend pushes events: text_delta / tool_called / image / done / error
  *
  * Returns an AbortController the caller can use to abort the request (or pair with /chat/stop for graceful abort).
  */
@@ -169,6 +170,18 @@ function dispatchSseChunk(part: string, cb: StreamCallbacks, markDone: () => voi
       case 'tool_called':
         cb.onToolCalled(parsed.tool);
         break;
+      case 'image':
+        if (typeof parsed?.base64 === 'string' && typeof parsed?.imageId === 'string') {
+          cb.onImage({
+            imageId:    parsed.imageId,
+            base64:     parsed.base64,
+            mimeType:   typeof parsed.mimeType === 'string' ? parsed.mimeType : 'image/png',
+            size:       typeof parsed.size === 'number' ? parsed.size : 0,
+            toolName:   typeof parsed.toolName === 'string' ? parsed.toolName : undefined,
+            toolCallId: typeof parsed.toolCallId === 'string' ? parsed.toolCallId : undefined,
+          });
+        }
+        break;
       case 'error':
         cb.onError(new Error(parsed.message || 'agent returned error'));
         break;
@@ -198,9 +211,27 @@ function dispatchSseChunk(part: string, cb: StreamCallbacks, markDone: () => voi
  */
 export async function stopAgent(conversationId?: string): Promise<boolean> {
   try {
+    /**
+     * EdgeOne agents/ runtime requires Markers-Conversation-Id on every
+     * agents/* request (since 2026-06-05 platform upgrade) — without it
+     * the runtime returns 400 (`AGENT_CONVERSATION_ID_REQUIRED`) before
+     * the handler runs.
+     *
+     * Earlier comments in this codebase warned that adding the header on
+     * /stop would overwrite chat's abort signal slot. The new runtime is
+     * expected to no longer have that bug; if you observe stop succeeding
+     * but chat not actually aborting, revisit this and use a different
+     * cancellation channel.
+     */
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (conversationId) {
+      headers['makers-conversation-id'] = conversationId;
+    }
     const res = await fetch(API.chatStop, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ conversation_id: conversationId }),
     });
     return res.ok;
