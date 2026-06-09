@@ -46,16 +46,6 @@ const SYSTEM_PROMPT = [
   '5. Do not perform destructive file or shell operations unless the user explicitly asks for them.',
   '6. If the task can be answered without tools, answer directly and keep the response concise.',
   'Only call tools that appear in the function-calling schema provided to you.',
-  '',
-  'Output format:',
-  'Reply in plain text only. Do NOT use any Markdown syntax — no headings (#, ##),',
-  'no bold/italic (**, *, _), no bullet or numbered lists (-, *, 1.), no tables,',
-  'no fenced code blocks (```...```), no inline backticks, no blockquotes (>),',
-  'no horizontal rules (---), no links in [text](url) form. The frontend renders',
-  'the response as raw text and will not interpret Markdown. If you need to show',
-  'code, indent it with spaces or label it inline (e.g. "Run: ls -la"). Use blank',
-  'lines for paragraph breaks; use plain dashes ("- ") at the start of a line for',
-  'simple itemized lists if absolutely necessary, but prefer running prose.',
 ].join('\n');
 
 type ChatMessage = Record<string, any>;
