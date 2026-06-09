@@ -1,7 +1,5 @@
 # Node.js Starter Agent
 
-**Language:** English | [简体中文](./README_zh-CN.md)
-
 A minimal Node.js / TypeScript LLM Agent template on EdgeOne Makers — built on raw `fetch` against an OpenAI-compatible Chat Completions endpoint, with EdgeOne sandbox tool calling and `context.store`-backed conversation memory. No agent framework.
 
 **Framework:** None (raw Node) · **Category:** Quick Start <!-- TODO: confirm --> · **Language:** TypeScript
