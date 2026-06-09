@@ -20,6 +20,6 @@ export function getModelConfig(env: RuntimeEnv): ModelConfig {
   return {
     apiKey: env.AI_GATEWAY_API_KEY || '',
     baseUrl: env.AI_GATEWAY_BASE_URL || '',
-    model: env.AI_GATEWAY_MODEL || '@makers/minimax-m2.7',
+    model: env.AI_GATEWAY_MODEL || '@makers/deepseek-v4-flash',
   };
 }
