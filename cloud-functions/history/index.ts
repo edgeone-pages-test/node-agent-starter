@@ -8,7 +8,7 @@
  * returns it to the frontend so the chat window can be restored after a
  * page refresh. This route lives in cloud-functions/ (stateless) rather
  * than agents/ (stateful) so it doesn't compete with the active /chat
- * SSE stream for the per-conversation lock.
+ * SSE stream for runtime resources.
  *
  * Following the official EdgeOne Pages Node Functions docs:
  *   - export `onRequestPost` for POST handlers
