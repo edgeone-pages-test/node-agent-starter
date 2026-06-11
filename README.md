@@ -65,7 +65,7 @@ node-starter/
 │   ├── _logger.ts                  # Logger utility (private)
 │   ├── _session.ts                 # Session adapter over context.store (private)
 │   └── _tools.ts                   # EdgeOne tool registry (private)
-├── cloud-functions/                 # Node/TS backend (EdgeOne Pages Node Functions, stateless)
+├── cloud-functions/                 # Node/TS backend (EdgeOne Makers Node Functions, stateless)
 │   ├── history/index.ts            # POST /history — conversation history
 │   └── _logger.ts                  # Logger utility (private)
 ├── src/                             # React + Vite + TypeScript frontend

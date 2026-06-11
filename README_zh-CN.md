@@ -66,7 +66,7 @@ node-starter/
 │   ├── _logger.ts                  # 日志工具（私有）
 │   ├── _session.ts                 # 基于 context.store 的会话适配（私有）
 │   └── _tools.ts                   # EdgeOne 工具注册表（私有）
-├── cloud-functions/                 # Node/TS 后端（EdgeOne Pages Node Functions，无状态）
+├── cloud-functions/                 # Node/TS 后端（EdgeOne Makers Node Functions，无状态）
 │   ├── history/index.ts            # POST /history —— 对话历史
 │   └── _logger.ts                  # 日志工具（私有）
 ├── src/                             # React + Vite + TypeScript 前端
