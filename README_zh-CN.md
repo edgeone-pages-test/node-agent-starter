@@ -4,7 +4,7 @@
 
 **Framework：** None (raw Node) · **Category：** Quick Start <!-- TODO: confirm --> · **Language：** TypeScript
 
-[![Deploy to EdgeOne Makers](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/makers/new?template=node-starter-agent&from=within&fromAgent=1&agentLang=typescript)
+[![Deploy to EdgeOne Makers](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?template=node-starter-agent)
 
 <!-- ![preview](./assets/preview.png)  TODO: confirm -->
 
